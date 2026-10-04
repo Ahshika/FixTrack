@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// FixTrack: كل محل ليه حساب Firebase خاص بيه (بيتعمل أوتوماتيك من السيرفر).
+// - tracking/{token}: صفحة تتبع جهاز. أي حد معاه لينك الوصل يقرأها (مفيش list)،
+//   والمحل صاحبها بس اللي يكتب فيها.
+// - shops/{uid}: بيانات المحل اللي بتظهر في صفحة التتبع.
+// - actions/{id}: ردود العملاء (حجز معاد / موافقة / رفض). العميل يضيف بس،
+//   والمحل صاحب الجهاز بس اللي يقرأ ويمسح.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(data) {
+      return request.auth != null && data.ownerUid == request.auth.uid;
+    }
+
+    match /tracking/{token} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isOwner(request.resource.data);
+      allow update: if isOwner(resource.data) && isOwner(request.resource.data);
+      allow delete: if isOwner(resource.data);
+    }
+
+    match /shops/{uid} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && (request.resource == null || request.resource.data.ownerUid == uid);
+    }
+
+    match /actions/{id} {
+      function ticket() {
+        return get(/databases/$(database)/documents/tracking/$(request.resource.data.token)).data;
+      }
+
+      allow create: if request.resource.data.keys().hasOnly(['token', 'ownerUid', 'type', 'slot'])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() >= 20 && request.resource.data.token.size() <= 100
+        && request.resource.data.type in ['pickup', 'approve', 'reject']
+        && exists(/databases/$(database)/documents/tracking/$(request.resource.data.token))
+        && ticket().ownerUid == request.resource.data.ownerUid
+        && ticket().status != 'delivered'
+        && (request.resource.data.type != 'pickup'
+            || (request.resource.data.slot is timestamp && request.resource.data.slot > request.time))
+        && (request.resource.data.type == 'pickup'
+            || (ticket().approval != null && ticket().approval.state == 'pending'));
+
+      allow read, delete: if isOwner(resource.data);
+      allow update: if false;
+    }
+
+    // ---------------- ربط فروع المحل الواحد ----------------
+    // orgs/{orgId}: مجموعة فروع. كل فرع عضو ليه حساب Firebase خاص بيه (members/{uid}).
+    // الأعضاء بس اللي يقروا ملخصات ومخزون وتحويلات بعض.
+    function isMember(orgId) {
+      return request.auth != null && exists(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid));
+    }
+
+    match /orgInvites/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if isMember(request.resource.data.orgId) && request.resource.data.createdBy == request.auth.uid;
+      allow delete: if isMember(resource.data.orgId);
+    }
+
+    match /orgs/{orgId} {
+      allow get: if isMember(orgId);
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      match /members/{uid} {
+        allow read: if isMember(orgId);
+        // اللي عمل المجموعة يضيف نفسه، والباقي لازم معاهم كود دعوة صالح لنفس المجموعة
+        allow create: if request.auth != null && request.auth.uid == uid && (
+          get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == uid
+          || (request.resource.data.inviteCode is string
+              && get(/databases/$(database)/documents/orgInvites/$(request.resource.data.inviteCode)).data.orgId == orgId
+              && get(/databases/$(database)/documents/orgInvites/$(request.resource.data.inviteCode)).data.expiresAt > request.time)
+        );
+        allow update: if request.auth != null && request.auth.uid == uid;
+        allow delete: if request.auth != null && (request.auth.uid == uid
+          || get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid);
+      }
+
+      match /branches/{uid}/{doc=**} {
+        allow read: if isMember(orgId);
+        allow write: if request.auth != null && request.auth.uid == uid && isMember(orgId);
+      }
+
+      match /transfers/{id} {
+        allow read: if isMember(orgId);
+        allow create: if isMember(orgId) && request.resource.data.fromUid == request.auth.uid && request.resource.data.status == 'sent';
+        // الفرع اللي استلم بس اللي يأكد الاستلام، ومن غير ما يغيّر البضاعة
+        allow update: if isMember(orgId) && resource.data.toUid == request.auth.uid
+          && resource.data.status == 'sent' && request.resource.data.status == 'received'
+          && request.resource.data.items == resource.data.items;
+        allow delete: if isMember(orgId) && resource.data.fromUid == request.auth.uid;
+      }
+    }
+  }
+}

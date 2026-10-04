@@ -1,0 +1,27 @@
+# Release builds & owner-only material (never publish)
+builds/
+signing/
+owner-tools/
+*.lnk
+*.txt
+!**/CMakeLists.txt
+!**/requirements*.txt
+
+# Secrets
+**/android/key.properties
+**/android/local.properties
+*.jks
+*.keystore
+*.key
+*.pem
+.env
+**/firebase/.firebase/
+**/firebase/*-debug.log
+
+# Flutter/IDE leftovers in both apps
+**/.dart_tool/
+**/build/
+**/.idea/
+*.iml
+**/.flutter-plugins-dependencies
+**/windows/flutter/ephemeral/
