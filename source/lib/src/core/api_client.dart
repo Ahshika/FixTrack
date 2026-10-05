@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'diagnostics.dart';
+
 class ApiException implements Exception {
   ApiException(this.message, {this.status});
   final String message;
@@ -46,16 +48,22 @@ class ApiClient {
     if (token != null) req.headers['authorization'] = 'Bearer $token';
     if (body != null) req.body = jsonEncode(body);
 
+    FreezeWatchdog.action('$method $path');
+    final sw = Stopwatch()..start();
     final http.Response res;
     try {
       res = await http.Response.fromStream(await _http.send(req).timeout(timeout));
-    } on SocketException {
+    } on SocketException catch (e) {
+      DiagLog.app?.write('NET', '$method $path: مش قادر يوصل للسيرفر ($e)');
       throw ApiException(networkErrorMessage);
     } on TimeoutException {
+      DiagLog.app?.write('NET', '$method $path: السيرفر ما ردّش في ${timeout.inSeconds} ثانية');
       throw ApiException(networkErrorMessage);
-    } on http.ClientException {
+    } on http.ClientException catch (e) {
+      DiagLog.app?.write('NET', '$method $path: $e');
       throw ApiException(networkErrorMessage);
     }
+    if (sw.elapsedMilliseconds > 3000) DiagLog.app?.write('SLOW', '$method $path خد ${sw.elapsedMilliseconds} مللي ثانية');
 
     Map<String, dynamic> data;
     try {

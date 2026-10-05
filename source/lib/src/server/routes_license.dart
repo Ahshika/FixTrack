@@ -22,7 +22,17 @@ extension _LicenseRoutes on FixTrackServer {
       trialStart = now;
       db.setSetting('trial_started', now.toIso8601String());
     }
-    final base = {'deviceCode': _deviceCode, 'tampered': tampered};
+    final shop = db.selectOne('SELECT name, phone FROM shop LIMIT 1');
+    final branch = db.selectOne('SELECT name FROM branches WHERE is_local = 1 LIMIT 1');
+    final owner = db.selectOne("SELECT name FROM users WHERE role = 'owner' AND active = 1 ORDER BY created_at LIMIT 1");
+    final base = {
+      'deviceCode': _deviceCode,
+      'tampered': tampered,
+      'shopName': shop?['name'],
+      'shopPhone': shop?['phone'],
+      'branchName': branch?['name'],
+      'ownerName': owner?['name'],
+    };
 
     final code = db.setting('license_code');
     if (code != null && code.isNotEmpty) {

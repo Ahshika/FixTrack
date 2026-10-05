@@ -178,6 +178,18 @@ void main() {
     expect((moves['moves'] as List).first['after'], 3);
   });
 
+  test('received stock is added on top of the current quantity', () async {
+    final p = await product('شاحن', qty: 4, cost: 3000);
+    // الاستقبال يضيف كمية وصلت، بس مايقدرش يقلل أو يجرد
+    var res = await cashier.post('/api/products/${p['id']}/adjust', {'qtyChange': 6, 'reason': 'purchase'});
+    expect(res['product']['qty'], 10);
+    await expectApiError(cashier.post('/api/products/${p['id']}/adjust', {'qtyChange': -1, 'reason': 'purchase'}), 403);
+    // صاحب المحل يكتب دفع كام: سعر الشرا بيبقى المتوسط (10×30 + 100) ÷ 15 = 26.67
+    res = await owner.post('/api/products/${p['id']}/adjust', {'qtyChange': 5, 'reason': 'purchase', 'costCents': 10000});
+    expect(res['product']['qty'], 15);
+    expect(res['product']['costCents'], 2667);
+  });
+
   test('import from Excel rows: create, update by barcode, errors', () async {
     await product('قديم', barcode: '111', price: 1000, qty: 1);
     final res = await owner.post('/api/products/import', {

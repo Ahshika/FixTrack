@@ -189,6 +189,13 @@ class _ProductRow extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         title: Text(p.name, style: const TextStyle().semiBold),
         subtitle: Text([?p.category, if (p.barcode != null) p.barcode!, if (showCost) 'شرا ${money(p.costCents)}'].join(' • ')),
+        leading: p.trackStock && !p.serialized
+            ? IconButton.filledTonal(
+                tooltip: 'إضافة كمية وصلت',
+                icon: const Icon(Icons.add_rounded),
+                onPressed: () => showDialog<void>(context: context, builder: (_) => AddStockDialog(product: p)),
+              )
+            : null,
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -412,6 +419,20 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
                       ),
                     ],
                   ),
+                if (!_isNew && _track && !_serialized) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FilledButton.tonalIcon(
+                      onPressed: () async {
+                        Navigator.pop(context);
+                        await showDialog<void>(context: context, builder: (_) => AddStockDialog(product: p!));
+                      },
+                      icon: const Icon(Icons.add_box_rounded),
+                      label: Text('إضافة كمية وصلت (الموجود ${p!.qty})'),
+                    ),
+                  ),
+                ],
                 if (!_isNew && user.isOwner) ...[
                   const SizedBox(height: 8),
                   Align(
@@ -443,6 +464,112 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
           width: 120,
           child: BusyButton(label: 'حفظ', busy: _busy, onPressed: _save),
         ),
+      ],
+    );
+  }
+}
+
+/// إضافة كمية وصلت: بيظهر الموجود، وتكتب الجديد، والإجمالي بيتحسب قدامك، ولما تحفظ بيتجمعوا.
+class AddStockDialog extends ConsumerStatefulWidget {
+  const AddStockDialog({super.key, required this.product});
+  final Product product;
+
+  @override
+  ConsumerState<AddStockDialog> createState() => _AddStockDialogState();
+}
+
+class _AddStockDialogState extends ConsumerState<AddStockDialog> {
+  final _qty = TextEditingController();
+  final _cost = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    _cost.dispose();
+    super.dispose();
+  }
+
+  int? get _added {
+    final v = int.tryParse(latinDigits(_qty.text.trim()));
+    return v == null || v <= 0 ? null : v;
+  }
+
+  Future<void> _save() async {
+    final added = _added;
+    if (added == null) return setState(() => _error = 'اكتب العدد اللي وصل');
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final cost = parseMoney(_cost.text);
+      final res = await ref.read(sessionProvider).value!.api!.post('/api/products/${widget.product.id}/adjust', {
+        'qtyChange': added,
+        'reason': 'purchase',
+        'note': 'كمية وصلت',
+        if (cost != null && cost > 0) 'costCents': cost,
+      });
+      ref.invalidate(productsProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      showMessage(context, '${widget.product.name}: بقى ${(res['product'] as Map)['qty']}');
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.product;
+    final added = _added;
+    final isOwner = ref.watch(sessionProvider).value!.user!.isOwner;
+    final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    Widget box(String label, String value, Color color) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            child: Column(children: [
+              Text(label, style: text.bodySmall),
+              Text(value, style: text.titleLarge?.bold.copyWith(color: color), textAlign: TextAlign.center),
+            ]),
+          ),
+        );
+    return AlertDialog(
+      title: Text('إضافة كمية: ${p.name}'),
+      content: SizedBox(
+        width: 400,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            box('كان عندك', '${p.qty}', scheme.outline),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Icon(Icons.add_rounded)),
+            box('وصل', added == null ? '—' : '$added', brandOrange),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('=', style: TextStyle(fontSize: 22))),
+            box('هيبقى', '${p.qty + (added ?? 0)}', scheme.primary),
+          ]),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _qty,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => setState(() => _error = null),
+            onSubmitted: (_) => _save(),
+            decoration: const InputDecoration(labelText: 'العدد الجديد اللي وصل'),
+          ),
+          if (isOwner) ...[
+            const SizedBox(height: 10),
+            MoneyField(controller: _cost, label: 'دفعت فيهم كام؟ (اختياري، عشان سعر الشرا يتحدث)'),
+          ],
+          if (_error != null) ...[const SizedBox(height: 10), ErrorBanner(_error!)],
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('إلغاء')),
+        SizedBox(width: 120, child: BusyButton(label: 'حفظ', busy: _busy, onPressed: _save)),
       ],
     );
   }

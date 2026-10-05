@@ -1,4 +1,6 @@
 import 'package:file_selector/file_selector.dart';
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -62,7 +64,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _result = null;
     });
     try {
-      final rows = SpreadsheetReader.read(await file.readAsBytes(), file.name);
+      final raw = await file.readAsBytes();
+      final fileName = file.name;
+      // ملف Excel كبير بياخد وقت في القراءة، فبيتقري في Isolate لوحده عشان الشاشة ما تقفش
+      final rows = await Isolate.run(() => SpreadsheetReader.read(raw, fileName));
       if (rows.isEmpty) throw const FormatException('الملف فاضي');
       setState(() {
         _fileName = file.name;

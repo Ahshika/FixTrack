@@ -31,7 +31,7 @@ extension _PosRoutes on FixTrackServer {
     r.post('/api/products/barcode', _authed((req, u) => {'barcode': _newBarcode()}, only: _cashStaff));
     r.post('/api/products/import', _authed(_importProducts, only: {'owner'}));
     r.patch('/api/products/<id>', _authed(_updateProduct, only: _cashStaff));
-    r.post('/api/products/<id>/adjust', _authed(_adjustStock, only: {'owner'}));
+    r.post('/api/products/<id>/adjust', _authed(_adjustStock, only: {'owner', 'reception'}));
     r.get('/api/products/<id>/moves', _authed(_productMoves, only: _cashStaff));
 
     r.post('/api/customers', _authed(_createCustomer, only: _cashStaff));
@@ -235,7 +235,18 @@ extension _PosRoutes on FixTrackServer {
     if (change == 0) return {'product': _productJson(p)};
     if (p['serialized'] == 1) throw ApiError(400, 'الأجهزة بالـ IMEI بتتضاف وبتتشال جهاز جهاز، مش بالجرد');
     final reason = const {'purchase', 'count', 'damaged', 'lost', 'return_supplier', 'other'}.contains(body['reason']) ? body['reason'] as String : 'other';
-    db.transaction(() => _moveStock(id, change, reason, userId: u.id, note: _optionalText(body, 'note')));
+    // الاستقبال يقدر يضيف بضاعة وصلت بس، والجرد والتالف لصاحب المحل
+    if (!u.isOwner && (reason != 'purchase' || change <= 0)) throw ApiError(403, 'تعديل الجرد لصاحب المحل بس. تقدر تضيف كمية وصلت');
+    final paid = u.isOwner && body['costCents'] is int && (body['costCents'] as int) > 0 && change > 0 ? body['costCents'] as int : null;
+    db.transaction(() {
+      if (paid != null) {
+        // سعر الشرا الجديد = متوسط القديم والجديد
+        final oldQty = (p['qty'] as int) < 0 ? 0 : p['qty'] as int;
+        final newCost = ((oldQty * (p['cost_cents'] as int) + paid) / (oldQty + change)).round();
+        db.execute('UPDATE products SET cost_cents = ?, updated_at = ? WHERE id = ?', [newCost, nowIso(), id]);
+      }
+      _moveStock(id, change, reason, userId: u.id, note: _optionalText(body, 'note'));
+    });
     _audit(u.id, 'product.adjust', 'product', id, '${p['name']}: ${change > 0 ? '+' : ''}$change ($reason)');
     _broadcast('products');
     return {'product': _productJson(db.selectOne('SELECT * FROM products WHERE id = ?', [id])!)};

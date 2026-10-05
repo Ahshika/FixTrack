@@ -14,6 +14,7 @@ class AppDb {
     db.execute('PRAGMA journal_mode = WAL;');
     db.execute('PRAGMA foreign_keys = ON;');
     db.execute('PRAGMA busy_timeout = 5000;');
+    db.execute('PRAGMA synchronous = NORMAL;');
     final appDb = AppDb._(db);
     appDb._migrate();
     return appDb;
@@ -58,6 +59,25 @@ class AppDb {
         'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
         [key, value],
       );
+
+  /// فحص سريع إن ملف قاعدة البيانات سليم ('ok' لو تمام).
+  String integrity() {
+    try {
+      final rows = raw.select('PRAGMA quick_check;');
+      final msgs = rows.map((r) => '${r.values.first}').toList();
+      return msgs.length == 1 && msgs.first == 'ok' ? 'ok' : msgs.take(5).join(' | ');
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// صيانة بتتعمل كل ساعة: تحسين الفهارس، وتصغير ملف الـ WAL.
+  void maintenance() {
+    try {
+      raw.execute('PRAGMA optimize;');
+      raw.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (_) {}
+  }
 
   void close() => raw.close();
 }

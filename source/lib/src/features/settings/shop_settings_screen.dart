@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -107,13 +108,17 @@ class _ShopFormState extends ConsumerState<_ShopForm> {
     if (file == null) return;
     setState(() => _logoBusy = true);
     try {
-      final decoded = img.decodeImage(await file.readAsBytes());
-      if (decoded == null) throw Exception('الملف ده مش صورة');
-      // بنصغّر اللوجو عشان الوصل يطبع بسرعة والصورة ماتتقلش على الشبكة
-      final resized = decoded.width > 400 || decoded.height > 400
-          ? img.copyResize(decoded, width: decoded.width >= decoded.height ? 400 : null, height: decoded.height > decoded.width ? 400 : null)
-          : decoded;
-      final png = img.encodePng(resized);
+      final raw = await file.readAsBytes();
+      // بنصغّر اللوجو (في Isolate لوحده) عشان الوصل يطبع بسرعة والصورة ماتتقلش على الشبكة
+      final png = await Isolate.run(() {
+        final decoded = img.decodeImage(raw);
+        if (decoded == null) return null;
+        final resized = decoded.width > 400 || decoded.height > 400
+            ? img.copyResize(decoded, width: decoded.width >= decoded.height ? 400 : null, height: decoded.height > decoded.width ? 400 : null)
+            : decoded;
+        return img.encodePng(resized);
+      });
+      if (png == null) throw Exception('الملف ده مش صورة');
       await ref.read(sessionProvider).value!.api!.put('/api/shop/logo', {'png': base64.encode(png)});
       ref.invalidate(shopProvider);
       if (mounted) showMessage(context, 'اتحفظ اللوجو');

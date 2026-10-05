@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:path/path.dart' as p;
@@ -14,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/app_info.dart';
+import '../core/diagnostics.dart';
 import '../core/firebase_config.dart';
 import '../core/format.dart';
 import '../core/license.dart';
@@ -77,6 +79,7 @@ class FixTrackServer {
   int get port => _http?.port ?? requestedPort;
 
   late final AppDb db;
+  late final DiagLog _log = DiagLog.openIn(dataDir, 'server');
   HttpServer? _http;
   DiscoveryResponder? _discovery;
   final _sockets = <WebSocketChannel>{};
@@ -88,6 +91,10 @@ class FixTrackServer {
     applyPendingRestore(dataDir);
     db = AppDb.open(p.join(dataDir, 'fixtrack.db'));
     if (db.setting('server_id') == null) db.setSetting('server_id', _uuid.v4());
+    _log.write('INFO', 'السيرفر اشتغل ($appName $appVersion)');
+    final health = db.integrity();
+    if (health != 'ok') _log.write('ERROR', 'فحص قاعدة البيانات لقى مشكلة: $health (ارجع لآخر نسخة احتياطية من الإعدادات)');
+    db.setSetting('db_health', health);
 
     final handler = const Pipeline().addMiddleware(_errors()).addHandler(_router().call);
     try {
@@ -112,13 +119,15 @@ class FixTrackServer {
 
     // شغل بيتكرر: تذكير العملاء اللي ما استلموش، والنسخ الاحتياطي اليومي
     Future<void> jobs() async {
+      db.maintenance();
       _runReminderJob();
       await _runBackupIfDue();
       await _pushOrgData();
     }
 
-    _jobsTimer = Timer.periodic(const Duration(hours: 1), (_) => jobs());
-    _firstJobTimer = Timer(const Duration(minutes: 1), jobs);
+    Future<void> safeJobs() => jobs().catchError((Object e, StackTrace st) => _log.error('الشغل الدوري: $e', st));
+    _jobsTimer = Timer.periodic(const Duration(hours: 1), (_) => safeJobs());
+    _firstJobTimer = Timer(const Duration(minutes: 1), safeJobs);
   }
 
   /// مزامنة فورية مع صفحة التتبع (للاختبارات وزرار "مزامنة دلوقتي").
@@ -203,12 +212,18 @@ class FixTrackServer {
   }
 
   Middleware _errors() => (inner) => (req) async {
+        final sw = Stopwatch()..start();
         try {
-          return await inner(req);
+          final res = await inner(req);
+          if (sw.elapsedMilliseconds > 700 && !req.url.path.startsWith('api/ws')) {
+            _log.write('SLOW', '${req.method} /${req.url.path} خد ${sw.elapsedMilliseconds} مللي ثانية');
+          }
+          return res;
         } on ApiError catch (e) {
           return _json(e.status, {'error': e.message});
         } catch (e, st) {
           stderr.writeln('Server error on ${req.method} ${req.url}: $e\n$st');
+          _log.error('${req.method} /${req.url.path}: $e', st);
           return _json(500, {'error': 'حصل خطأ في السيرفر، جرّب تاني'});
         }
       };

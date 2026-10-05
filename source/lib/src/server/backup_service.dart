@@ -65,26 +65,12 @@ extension _BackupRoutes on FixTrackServer {
     if (snapshot.existsSync()) snapshot.deleteSync();
     db.raw.execute('VACUUM INTO ?', [snapshot.path]);
 
-    final archive = Archive();
-    void addFile(String nameInZip, File f) {
-      final bytes = f.readAsBytesSync();
-      archive.addFile(ArchiveFile(nameInZip, bytes.length, bytes));
-    }
-
-    addFile('fixtrack.db', snapshot);
-    final logo = File(p.join(dataDir, 'logo.png'));
-    if (logo.existsSync()) addFile('logo.png', logo);
-    final files = Directory(p.join(dataDir, 'files'));
-    if (files.existsSync()) {
-      for (final f in files.listSync().whereType<File>()) {
-        addFile('files/${p.basename(f.path)}', f);
-      }
-    }
-    final info = utf8.encode(jsonEncode({'app': 'fixtrack', 'version': appVersion, 'createdAt': stamp.toUtc().toIso8601String(), 'serverId': db.setting('server_id')}));
-    archive.addFile(ArchiveFile('backup.json', info.length, info));
-
-    final zipBytes = ZipEncoder().encode(archive);
-    final out = File(p.join(_backupDir.path, name))..writeAsBytesSync(zipBytes);
+    final info = jsonEncode({'app': 'fixtrack', 'version': appVersion, 'createdAt': stamp.toUtc().toIso8601String(), 'serverId': db.setting('server_id')});
+    final outPath = p.join(_backupDir.path, name);
+    final snapshotPath = snapshot.path, data = dataDir;
+    // الضغط بيحصل في Isolate لوحده: السيرفر يفضل يرد على الأجهزة، ومن غير ما الصور كلها تتحمّل في الذاكرة
+    await backupInBackground(outPath, snapshotPath, 'fixtrack.db', data, info);
+    final out = File(outPath);
     snapshot.deleteSync();
 
     // نسخة في الفولدر التاني (لو المحل اختاره)
@@ -118,8 +104,8 @@ extension _BackupRoutes on FixTrackServer {
     final name = p.basename(body['name'] as String? ?? '');
     final file = File(p.join(_backupDir.path, name));
     if (!name.endsWith('.zip') || !file.existsSync()) throw ApiError(404, 'النسخة دي مش موجودة');
-    final archive = ZipDecoder().decodeBytes(file.readAsBytesSync());
-    if (archive.findFile('fixtrack.db') == null) throw ApiError(400, 'الملف ده مش نسخة احتياطية من FixTrack');
+    final valid = await zipHasFile(file.path, 'fixtrack.db');
+    if (!valid) throw ApiError(400, 'الملف ده مش نسخة احتياطية من FixTrack');
     File(p.join(dataDir, 'restore.pending')).writeAsStringSync(file.path);
     _audit(u.id, 'backup.restore', 'backup', null, name);
     return {'ok': true, 'message': 'اقفل البرنامج على كمبيوتر السيرفر وافتحه تاني عشان الاسترجاع يتم'};
@@ -152,4 +138,33 @@ void applyPendingRestore(String dataDir) {
       ..parent.createSync(recursive: true)
       ..writeAsBytesSync(entry.content as List<int>);
   }
+}
+
+Future<void> backupInBackground(String outPath, String snapshotPath, String dbName, String dataDir, String infoJson) =>
+    Isolate.run(() => writeBackupZip(outPath, snapshotPath, dbName, dataDir, infoJson));
+
+Future<bool> zipHasFile(String zipPath, String name) => Isolate.run(() {
+      final input = InputFileStream(zipPath);
+      try {
+        return ZipDecoder().decodeStream(input).findFile(name) != null;
+      } finally {
+        input.closeSync();
+      }
+    });
+
+/// بيكتب ملف النسخة الاحتياطية على الديسك مباشرة (بيتنادى في Isolate لوحده).
+Future<void> writeBackupZip(String outPath, String snapshotPath, String dbName, String dataDir, String infoJson) async {
+  final enc = ZipFileEncoder()..create(outPath);
+  await enc.addFile(File(snapshotPath), dbName);
+  final logo = File(p.join(dataDir, 'logo.png'));
+  if (logo.existsSync()) await enc.addFile(logo, 'logo.png');
+  final files = Directory(p.join(dataDir, 'files'));
+  if (files.existsSync()) {
+    for (final f in files.listSync().whereType<File>()) {
+      await enc.addFile(f, 'files/${p.basename(f.path)}');
+    }
+  }
+  final info = utf8.encode(infoJson);
+  enc.addArchiveFile(ArchiveFile('backup.json', info.length, info));
+  await enc.close();
 }

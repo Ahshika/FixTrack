@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -375,11 +376,15 @@ Future<String?> captureAndUploadPhoto(BuildContext context, WidgetRef ref, Strin
   final useCamera = Platform.isAndroid || Platform.isIOS;
   final file = await picker.pickImage(source: useCamera ? ImageSource.camera : ImageSource.gallery, maxWidth: 1600, imageQuality: 80);
   if (file == null) return null;
-  var bytes = await file.readAsBytes();
-  final decoded = img.decodeImage(bytes);
-  if (decoded == null) throw Exception('الملف ده مش صورة');
-  final resized = decoded.width > 1400 ? img.copyResize(decoded, width: 1400) : decoded;
-  bytes = img.encodeJpg(resized, quality: 75);
+  final raw = await file.readAsBytes();
+  // التصغير في Isolate لوحده: صورة موبايل 12 ميجابكسل بتاخد ثواني، والشاشة ماينفعش تقف
+  final bytes = await Isolate.run(() {
+    final decoded = img.decodeImage(raw);
+    if (decoded == null) return null;
+    final resized = decoded.width > 1400 ? img.copyResize(decoded, width: 1400) : decoded;
+    return img.encodeJpg(resized, quality: 75);
+  });
+  if (bytes == null) throw Exception('الملف ده مش صورة');
   final res = await ref.read(sessionProvider).value!.api!.post('/api/files', {'data': base64.encode(bytes), 'kind': kind});
   return res['id'] as String;
 }

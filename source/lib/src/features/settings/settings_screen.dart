@@ -18,6 +18,7 @@ import '../receipts/print_service.dart';
 import 'audit_screen.dart';
 import 'backup_screen.dart';
 import 'license_screen.dart';
+import 'logs_screen.dart';
 import 'message_settings_screen.dart';
 import 'shop_settings_screen.dart';
 
@@ -159,6 +160,16 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ],
+          const SectionTitle('المشاكل'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('سجل المشاكل'),
+              subtitle: const Text('لو البرنامج علّق أو ظهر خطأ، من هنا تبعت التفاصيل لصاحب البرنامج'),
+              trailing: const Icon(Icons.chevron_left_rounded),
+              onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const LogsScreen())),
+            ),
+          ),
           const SectionTitle('المساعدة'),
           Card(
             child: ListTile(

@@ -155,7 +155,7 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                     if (supportWhatsApp.isNotEmpty)
                       FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
-                        onPressed: () => openWhatsApp(supportWhatsApp, 'عايز أفعّل FixTrack.\nكود الجهاز: $device'),
+                        onPressed: () => openWhatsApp(supportWhatsApp, activationMessage(s)),
                         icon: const Icon(Icons.chat_rounded),
                         label: const Text('ابعته واتساب لصاحب البرنامج'),
                       ),
@@ -185,4 +185,21 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
       ),
     );
   }
+}
+
+/// رسالة طلب التفعيل اللي بتتبعت لصاحب البرنامج على واتساب.
+String activationMessage(Map<String, dynamic> s) {
+  String? v(String k) {
+    final x = (s[k] as String?)?.trim();
+    return x == null || x.isEmpty ? null : x;
+  }
+
+  return [
+    'طلب تفعيل FixTrack',
+    if (v('shopName') != null) 'المحل: ${v('shopName')}',
+    if (v('branchName') != null && v('branchName') != 'الفرع الرئيسي') 'الفرع: ${v('branchName')}',
+    if (v('ownerName') != null) 'صاحب المحل: ${v('ownerName')}',
+    if (v('shopPhone') != null) 'التليفون: ${v('shopPhone')}',
+    'كود الجهاز: ${s['deviceCode']}',
+  ].join('\n');
 }

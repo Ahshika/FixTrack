@@ -1,5 +1,5 @@
 const appName = 'FixTrack';
-const appVersion = '1.0.0';
+const appVersion = '1.0.2';
 
 /// بيزيد لما شكل الـ API يتغير بطريقة مش متوافقة مع النسخ القديمة.
 const apiVersion = 1;

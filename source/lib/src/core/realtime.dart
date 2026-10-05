@@ -18,10 +18,16 @@ final realtimeProvider = StreamProvider<RealtimeEvent>((ref) {
   WebSocketChannel? channel;
   Timer? reconnect;
   var disposed = false;
+  var connectedBefore = false;
 
   void connect() {
     if (disposed) return;
     channel = WebSocketChannel.connect(api.webSocketUri());
+    // أول ما الاتصال يرجع بعد ما قطع (السيرفر رجع، أو الواي فاي رجع): كل الشاشات تتحدّث
+    channel!.ready.then((_) {
+      if (connectedBefore && !disposed) controller.add(RealtimeEvent('*'));
+      connectedBefore = true;
+    }, onError: (_) {});
     channel!.stream.listen(
       (msg) {
         try {
@@ -46,9 +52,18 @@ final realtimeProvider = StreamProvider<RealtimeEvent>((ref) {
 });
 
 /// بيعيد تحميل provider معين لما موضوع معين يتغير على السيرفر.
-void refreshOn(Ref ref, String topic) {
+void refreshOn(Ref ref, String topic) => refreshOnTopics(ref, {topic});
+
+/// بيستنى ربع ثانية بعد آخر حدث قبل ما يعيد التحميل: لو أجهزة كتير بتغيّر حاجات في نفس اللحظة،
+/// الشاشة بتتحدّث مرة واحدة بدل عشر مرات.
+void refreshOnTopics(Ref ref, Set<String> topics) {
+  Timer? pending;
+  ref.onDispose(() => pending?.cancel());
   ref.listen(realtimeProvider, (_, next) {
-    if (next.value?.topic == topic) ref.invalidateSelf();
+    final t = next.value?.topic;
+    if (t == null || (t != '*' && !topics.contains(t))) return;
+    pending?.cancel();
+    pending = Timer(const Duration(milliseconds: 250), ref.invalidateSelf);
   });
 }
 
