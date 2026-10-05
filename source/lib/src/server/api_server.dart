@@ -221,6 +221,9 @@ class FixTrackServer {
           return res;
         } on ApiError catch (e) {
           return _json(e.status, {'error': e.message});
+        } on HijackException {
+          // ده مش خطأ: الـ WebSocket بياخد الاتصال، وshelf لازم يشوف الاستثناء ده عشان يكمّل
+          rethrow;
         } catch (e, st) {
           stderr.writeln('Server error on ${req.method} ${req.url}: $e\n$st');
           _log.error('${req.method} /${req.url.path}: $e', st);

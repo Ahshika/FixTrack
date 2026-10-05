@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:file_selector/file_selector.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 
+import '../../core/diagnostics.dart';
 import '../../core/format.dart';
 import '../../core/session.dart';
 import '../../core/shop.dart';
@@ -102,9 +104,17 @@ class _ShopFormState extends ConsumerState<_ShopForm> {
   }
 
   Future<void> _pickLogo() async {
-    final file = await openFile(acceptedTypeGroups: [
-      const XTypeGroup(label: 'صور', extensions: ['png', 'jpg', 'jpeg', 'webp'], mimeTypes: ['image/*']),
-    ]);
+    // بنفتح على فولدر الصور اللي على الجهاز، مش آخر فولدر (لو كان موبايل متوصل أو فولدر شبكة، ويندوز ممكن يعلّق فيه)
+    final pictures = '${Platform.environment['USERPROFILE'] ?? ''}\\Pictures';
+    FreezeWatchdog.action('نافذة اختيار اللوجو من ويندوز');
+    DiagLog.app?.write('INFO', 'فتح نافذة اختيار اللوجو');
+    final file = await openFile(
+      initialDirectory: Platform.isWindows && Directory(pictures).existsSync() ? pictures : null,
+      acceptedTypeGroups: [
+        const XTypeGroup(label: 'صور', extensions: ['png', 'jpg', 'jpeg', 'webp'], mimeTypes: ['image/*']),
+      ],
+    );
+    DiagLog.app?.write('INFO', file == null ? 'نافذة اختيار اللوجو اتقفلت من غير اختيار' : 'اتختار لوجو');
     if (file == null) return;
     setState(() => _logoBusy = true);
     try {
