@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
-import 'package:image_picker/image_picker.dart';
+import 'package:image_picker/image_picker.dart' hide XFile;
 
+import '../../core/diagnostics.dart';
 import '../../core/format.dart';
 import '../../core/pos_models.dart';
 import '../../core/session.dart';
@@ -355,6 +357,7 @@ class _PhotoDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final api = ref.read(sessionProvider).value!.api!;
+    FreezeWatchdog.action('عرض صورة كبيرة');
     return Dialog(
       child: Padding(
         padding: const EdgeInsets.all(8),
@@ -372,9 +375,22 @@ class _PhotoDialog extends ConsumerWidget {
 
 /// تصوير صورة (كاميرا على الموبايل، أو اختيار ملف على الكمبيوتر) وتصغيرها ورفعها للسيرفر.
 Future<String?> captureAndUploadPhoto(BuildContext context, WidgetRef ref, String kind) async {
-  final picker = ImagePicker();
-  final useCamera = Platform.isAndroid || Platform.isIOS;
-  final file = await picker.pickImage(source: useCamera ? ImageSource.camera : ImageSource.gallery, maxWidth: 1600, imageQuality: 80);
+  final XFile? file;
+  if (Platform.isAndroid || Platform.isIOS) {
+    file = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1600, imageQuality: 80);
+  } else {
+    // بنفتح على فولدر الصور اللي على الجهاز، مش آخر فولدر (لو كان موبايل متوصل أو فولدر شبكة، ويندوز ممكن يعلّق فيه)
+    final pictures = '${Platform.environment['USERPROFILE'] ?? ''}\\Pictures';
+    FreezeWatchdog.action('نافذة اختيار صورة من ويندوز');
+    DiagLog.app?.write('INFO', 'فتح نافذة اختيار صورة');
+    file = await openFile(
+      initialDirectory: Directory(pictures).existsSync() ? pictures : null,
+      acceptedTypeGroups: [
+        const XTypeGroup(label: 'صور', extensions: ['jpg', 'jpeg', 'png', 'webp']),
+      ],
+    );
+    DiagLog.app?.write('INFO', file == null ? 'نافذة اختيار الصورة اتقفلت من غير اختيار' : 'اتختارت صورة ${await file.length() ~/ 1024} KB');
+  }
   if (file == null) return null;
   final raw = await file.readAsBytes();
   // التصغير في Isolate لوحده: صورة موبايل 12 ميجابكسل بتاخد ثواني، والشاشة ماينفعش تقف
