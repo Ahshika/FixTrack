@@ -2,6 +2,9 @@ part of 'api_server.dart';
 
 const _cashStaff = {'owner', 'reception'};
 
+/// أقصى عدد حركات بيظهر في شاشة الدرج (الإجماليات بتتحسب من كل الحركات).
+const _cashMovesShown = 200;
+
 /// أنواع حركات الخزنة. الموجب داخل للخزنة والسالب خارج.
 const cashMoveTypes = {
   'sale': 'بيع',
@@ -675,9 +678,12 @@ extension _PosRoutes on FixTrackServer {
       'keptCashCents': s['kept_cash_cents'],
       'differenceCents': s['counted_cash_cents'] == null ? null : (s['counted_cash_cents'] as int) - (s['expected_cash_cents'] as int),
       'note': s['note'],
+      // آخر الحركات بس: لو اليوم ما اتقفلش أسابيع، الحركات بتبقى بالآلاف وكانت بتتقل السيرفر كله
+      if (withMoves) 'movesCount': db.selectOne('SELECT COUNT(*) AS c FROM cash_moves WHERE session_id = ?', [sessionId])!['c'],
       if (withMoves)
         'moves': db
-            .select('SELECT m.*, u.name AS user_name FROM cash_moves m LEFT JOIN users u ON u.id = m.user_id WHERE m.session_id = ? ORDER BY m.created_at DESC', [sessionId])
+            .select('SELECT m.*, u.name AS user_name FROM cash_moves m LEFT JOIN users u ON u.id = m.user_id WHERE m.session_id = ? '
+                'ORDER BY m.created_at DESC LIMIT $_cashMovesShown', [sessionId])
             .map((m) => {
                   'id': m['id'],
                   'type': m['type'],
@@ -708,11 +714,15 @@ extension _PosRoutes on FixTrackServer {
     if (type == 'withdraw' && !u.isOwner) throw ApiError(403, 'السحب من الخزنة لصاحب المحل بس');
     final note = _optionalText(body, 'note');
     if (type == 'expense' && note == null && _optionalText(body, 'category') == null) throw ApiError(400, 'اكتب المصروف ده إيه');
-    db.transaction(() => _cashMove(type as String, type == 'deposit' ? amount : -amount, PaymentMethod.parse(body['method'] as String?),
-        userId: u.id, category: _optionalText(body, 'category'), note: note));
+    final id = db.transaction(() {
+      _cashMove(type as String, type == 'deposit' ? amount : -amount, PaymentMethod.parse(body['method'] as String?),
+          userId: u.id, category: _optionalText(body, 'category'), note: note);
+      return _openSessionId(u.id);
+    });
     _audit(u.id, 'cash.$type', 'cash', null, '${_money(amount)} ${note ?? body['category'] ?? ''}');
     _broadcast('cash');
-    return _cashCurrent(req, u);
+    // الشاشة بتعيد تحميل الدرج لوحدها، فمش لازم نبعت الحركات كلها هنا
+    return {'session': _sessionSummary(id)};
   }
 
   Future<Object?> _closeCash(Request req, AuthUser u) async {

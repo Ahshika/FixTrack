@@ -84,6 +84,7 @@ class FixTrackServer {
   DiscoveryResponder? _discovery;
   final _sockets = <WebSocketChannel>{};
   final _loginFailures = <String, _Failures>{};
+  final _lastSeenWrites = <String, DateTime>{};
 
   Future<void> start() async {
     await initializeDateFormatting('ar');
@@ -98,7 +99,8 @@ class FixTrackServer {
 
     final handler = const Pipeline().addMiddleware(_errors()).addHandler(_router().call);
     try {
-      _http = await shelf_io.serve(handler, InternetAddress.anyIPv4, requestedPort, shared: false);
+      // طابور اتصالات أكبر: لما أجهزة كتير تتصل في نفس اللحظة ماتترفضش
+      _http = await shelf_io.serve(handler, InternetAddress.anyIPv4, requestedPort, shared: false, backlog: 1024);
     } on SocketException {
       db.close();
       throw ApiError(500, 'البورت $requestedPort مستخدم. غالباً البرنامج مفتوح بالفعل على الجهاز ده.');
@@ -257,7 +259,13 @@ class FixTrackServer {
     );
     if (row == null) throw ApiError(401, 'الجلسة انتهت، سجل دخول تاني');
     if (row['active'] != 1) throw ApiError(401, 'الحساب ده متوقف، كلم صاحب المحل');
-    db.execute('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?', [nowIso(), tokenHash]);
+    // آخر ظهور للجهاز بيتسجل مرة كل دقيقة بس، مش مع كل طلب (كانت كتابة زيادة في كل عملية)
+    final now = DateTime.now();
+    final last = _lastSeenWrites[tokenHash];
+    if (last == null || now.difference(last) > const Duration(minutes: 1)) {
+      _lastSeenWrites[tokenHash] = now;
+      db.execute('UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?', [nowIso(), tokenHash]);
+    }
     return AuthUser(row, tokenHash);
   }
 

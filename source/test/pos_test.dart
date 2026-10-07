@@ -169,6 +169,17 @@ void main() {
     await expectApiError(cashier.get('/api/cash/sessions'), 403);
   });
 
+  test('a day that is never closed only sends the latest drawer moves, totals still count all', () async {
+    for (var i = 0; i < 250; i++) {
+      final res = await cashier.post('/api/cash/moves', {'type': 'expense', 'amountCents': 100, 'category': 'أكل وشرب'});
+      expect(res['session']['moves'], isNull);
+    }
+    final cash = await cashier.get('/api/cash/current');
+    expect((cash['session']['moves'] as List).length, 200);
+    expect(cash['session']['movesCount'], 250);
+    expect(cash['session']['byType']['expense'], -25000);
+  });
+
   test('stock adjustment is owner-only and logged', () async {
     final p = await product('جراب', qty: 5);
     await expectApiError(cashier.post('/api/products/${p['id']}/adjust', {'setQty': 1}), 403);

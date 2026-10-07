@@ -132,6 +132,9 @@ class _CurrentSession extends StatelessWidget {
         ]),
         const SectionTitle('الحركة'),
         if (s.moves.isEmpty) const Text('مفيش حركة'),
+        if (s.movesCount > s.moves.length)
+          Text('ظاهر آخر ${s.moves.length} حركة من ${s.movesCount}. قفّل اليوم عشان تبدأ يوم جديد.',
+              style: TextStyle(color: scheme.onSurfaceVariant)),
         for (final m in s.moves)
           ListTile(
             contentPadding: EdgeInsets.zero,

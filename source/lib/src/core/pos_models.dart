@@ -180,7 +180,8 @@ class CashSession {
         keptCashCents = j['keptCashCents'] as int?,
         differenceCents = j['differenceCents'] as int?,
         note = j['note'] as String?,
-        moves = (j['moves'] as List? ?? const []).map((m) => CashMove(m as Map<String, dynamic>)).toList();
+        moves = (j['moves'] as List? ?? const []).map((m) => CashMove(m as Map<String, dynamic>)).toList(),
+        movesCount = j['movesCount'] as int? ?? (j['moves'] as List? ?? const []).length;
 
   final String id;
   final DateTime openedAt;
@@ -196,6 +197,9 @@ class CashSession {
   final int? differenceCents;
   final String? note;
   final List<CashMove> moves;
+
+  /// عدد كل حركات اليوم (السيرفر بيبعت آخرها بس).
+  final int movesCount;
 
   int get salesCents => (byType['sale'] ?? 0) + (byType['sale_refund'] ?? 0);
   int get repairsCents => (byType['repair_payment'] ?? 0) + (byType['repair_refund'] ?? 0);

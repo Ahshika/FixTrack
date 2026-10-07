@@ -9,6 +9,17 @@ class AppDb {
 
   final Database raw;
 
+  /// الجمل المجهزة بتتحفظ وتتعاد بدل ما SQLite يحللها من الأول مع كل طلب.
+  final _statements = <String, PreparedStatement>{};
+  static const _maxStatements = 300;
+
+  PreparedStatement _prepared(String sql) {
+    final cached = _statements.remove(sql);
+    if (cached != null) return _statements[sql] = cached; // آخر واحدة اتستخدمت بتروح للآخر
+    if (_statements.length >= _maxStatements) _statements.remove(_statements.keys.first)!.close();
+    return _statements[sql] = raw.prepare(sql, persistent: true);
+  }
+
   static AppDb open(String path) {
     final db = sqlite3.open(path);
     db.execute('PRAGMA journal_mode = WAL;');
@@ -42,14 +53,16 @@ class AppDb {
   }
 
   List<Map<String, Object?>> select(String sql, [List<Object?> params = const []]) =>
-      raw.select(sql, params).map((r) => Map<String, Object?>.from(r)).toList();
+      _prepared(sql).select(params).map((r) => Map<String, Object?>.from(r)).toList();
 
   Map<String, Object?>? selectOne(String sql, [List<Object?> params = const []]) {
     final rows = select(sql, params);
     return rows.isEmpty ? null : rows.first;
   }
 
-  void execute(String sql, [List<Object?> params = const []]) => raw.execute(sql, params);
+  /// من غير باراميترز ممكن تبقى أكتر من جملة (زي الـ migrations)، فبتتنفذ على طول.
+  void execute(String sql, [List<Object?> params = const []]) =>
+      params.isEmpty ? raw.execute(sql) : _prepared(sql).execute(params);
 
   String? setting(String key) =>
       selectOne('SELECT value FROM settings WHERE key = ?', [key])?['value'] as String?;
@@ -79,7 +92,13 @@ class AppDb {
     } catch (_) {}
   }
 
-  void close() => raw.close();
+  void close() {
+    for (final s in _statements.values) {
+      s.close();
+    }
+    _statements.clear();
+    raw.close();
+  }
 }
 
 const _migrations = <String>[
