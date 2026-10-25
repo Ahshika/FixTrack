@@ -33,7 +33,7 @@ class _Destination {
   final Set<Role>? roles;
 }
 
-const _staff = {Role.owner, Role.reception};
+const _staff = {Role.owner, Role.supervisor, Role.reception};
 
 final _destinations = <_Destination>[
   _Destination('الرئيسية', Icons.space_dashboard_outlined, Icons.space_dashboard_rounded, () => const DashboardScreen()),

@@ -1,5 +1,6 @@
 enum Role {
   owner('المالك'),
+  supervisor('مسؤول شفت'),
   reception('استقبال'),
   technician('فني');
 
@@ -44,6 +45,9 @@ class AppUser {
   final int commissionValue;
 
   bool get isOwner => role == Role.owner;
+
+  /// المالك أو مسؤول الشفت: يوافق على الخصم والجرد والتسليم من غير كود.
+  bool get isManager => role == Role.owner || role == Role.supervisor;
 }
 
 class ServerInfo {

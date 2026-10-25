@@ -356,7 +356,7 @@ class _DeliverDialogState extends ConsumerState<DeliverDialog> with _Submitting 
                     if (latin != v) _pin.value = TextEditingValue(text: latin, selection: TextSelection.collapsed(offset: latin.length));
                   },
                 ),
-                if (widget.user.isOwner)
+                if (widget.user.isManager)
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,

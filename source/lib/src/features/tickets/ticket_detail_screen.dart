@@ -115,7 +115,7 @@ class _TicketView extends ConsumerWidget {
               ],
             ),
           ],
-          if (t.status != TicketStatus.delivered || user.isOwner)
+          if (t.status != TicketStatus.delivered || user.isManager)
             IconButton(
               tooltip: 'تعديل',
               icon: const Icon(Icons.edit_rounded),

@@ -1,6 +1,6 @@
 part of 'api_server.dart';
 
-const _ticketStaff = {'owner', 'reception'};
+const _ticketStaff = {'owner', 'supervisor', 'reception'};
 
 extension _TicketRoutes on FixTrackServer {
   void _registerTicketRoutes(Router r) {
@@ -478,7 +478,7 @@ extension _TicketRoutes on FixTrackServer {
   Future<Object?> _updateTicket(Request req, AuthUser u) async {
     final r = _loadTicket(req.params['id']!, u);
     final id = r['id'] as String;
-    if (r['status'] == 'delivered' && !u.isOwner) throw ApiError(400, 'الجهاز اتسلم خلاص، التعديل لصاحب المحل بس');
+    if (r['status'] == 'delivered' && !u.isManager) throw ApiError(400, 'الجهاز اتسلم خلاص، التعديل لصاحب المحل أو مسؤول الشفت بس');
     final body = await _body(req);
 
     final isTech = u.role == 'technician';
@@ -619,7 +619,7 @@ extension _TicketRoutes on FixTrackServer {
 
     final override = body['override'] == true;
     if (override) {
-      if (!u.isOwner) throw ApiError(403, 'التسليم من غير كود الاستلام لصاحب المحل بس');
+      if (!u.isManager) throw ApiError(403, 'التسليم من غير كود الاستلام لصاحب المحل أو مسؤول الشفت بس');
     } else if ((body['pin'] as String? ?? '').trim() != r['pickup_pin']) {
       throw ApiError(400, 'كود الاستلام غلط. الكود مكتوب في وصل العميل');
     }

@@ -32,11 +32,20 @@ class AppDb {
   }
 
   void _migrate() {
-    for (var v = raw.userVersion; v < _migrations.length; v++) {
-      transaction(() {
-        raw.execute(_migrations[v]);
-        raw.userVersion = v + 1;
-      });
+    if (raw.userVersion >= _migrations.length) return;
+    // بعض الـ migrations بتعيد بنا جدول (زي users)، فالربط بين الجداول بيتقفل لحد ما تخلص
+    // وبنتأكد قبل الحفظ إن مفيش ربط اتكسر.
+    raw.execute('PRAGMA foreign_keys = OFF;');
+    try {
+      for (var v = raw.userVersion; v < _migrations.length; v++) {
+        transaction(() {
+          raw.execute(_migrations[v]);
+          if (raw.select('PRAGMA foreign_key_check;').isNotEmpty) throw StateError('migration v${v + 1} broke a foreign key');
+          raw.userVersion = v + 1;
+        });
+      }
+    } finally {
+      raw.execute('PRAGMA foreign_keys = ON;');
     }
   }
 
@@ -528,5 +537,26 @@ const _migrations = <String>[
 
   -- الأجهزة اللي جاهزة من قبل التحديث: بنعتبر آخر تعديل هو وقت ما بقت جاهزة
   UPDATE tickets SET ready_at = updated_at WHERE status IN ('ready', 'cancelled', 'unrepairable');
+  ''',
+
+  // v8: صلاحية "مسؤول شفت". SQLite ما بيعدلش الـ CHECK، فجدول الموظفين بيتبني من جديد بنفس البيانات
+  '''
+  CREATE TABLE users_new (
+    id                TEXT PRIMARY KEY,
+    branch_id         TEXT REFERENCES branches(id),
+    name              TEXT NOT NULL,
+    username          TEXT NOT NULL UNIQUE,
+    password_hash     TEXT NOT NULL,
+    role              TEXT NOT NULL CHECK (role IN ('owner', 'supervisor', 'reception', 'technician')),
+    active            INTEGER NOT NULL DEFAULT 1,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    commission_type   TEXT NOT NULL DEFAULT 'none',
+    commission_value  INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO users_new(id, branch_id, name, username, password_hash, role, active, created_at, updated_at, commission_type, commission_value)
+    SELECT id, branch_id, name, username, password_hash, role, active, created_at, updated_at, commission_type, commission_value FROM users;
+  DROP TABLE users;
+  ALTER TABLE users_new RENAME TO users;
   ''',
 ];

@@ -288,7 +288,7 @@ class _CartPanel extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final shop = ref.watch(shopProvider).value;
-    final canDiscount = ref.watch(sessionProvider).value!.user!.isOwner || (shop?.cashierCanDiscount ?? true);
+    final canDiscount = ref.watch(sessionProvider).value!.user!.isManager || (shop?.cashierCanDiscount ?? true);
 
     return Material(
       color: scheme.surfaceContainerLowest,

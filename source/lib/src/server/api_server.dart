@@ -40,7 +40,7 @@ part 'routes_shop.dart';
 part 'routes_tickets.dart';
 
 const serverPort = 8743;
-const roles = {'owner', 'reception', 'technician'};
+const roles = {'owner', 'supervisor', 'reception', 'technician'};
 const _uuid = Uuid();
 
 String nowIso() => DateTime.now().toUtc().toIso8601String();
@@ -60,6 +60,7 @@ class AuthUser {
   String get id => row['id'] as String;
   String get role => row['role'] as String;
   bool get isOwner => role == 'owner';
+  bool get isManager => role == 'owner' || role == 'supervisor';
 }
 
 /// سيرفر المحل: بيشتغل على كمبيوتر المحل، وكل الموبايلات والكمبيوترات التانية بتكلمه.

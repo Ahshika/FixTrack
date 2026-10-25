@@ -1,6 +1,6 @@
 part of 'api_server.dart';
 
-const _cashStaff = {'owner', 'reception'};
+const _cashStaff = {'owner', 'supervisor', 'reception'};
 
 /// أقصى عدد حركات بيظهر في شاشة الدرج (الإجماليات بتتحسب من كل الحركات).
 const _cashMovesShown = 200;
@@ -34,7 +34,7 @@ extension _PosRoutes on FixTrackServer {
     r.post('/api/products/barcode', _authed((req, u) => {'barcode': _newBarcode()}, only: _cashStaff));
     r.post('/api/products/import', _authed(_importProducts, only: {'owner'}));
     r.patch('/api/products/<id>', _authed(_updateProduct, only: _cashStaff));
-    r.post('/api/products/<id>/adjust', _authed(_adjustStock, only: {'owner', 'reception'}));
+    r.post('/api/products/<id>/adjust', _authed(_adjustStock, only: _cashStaff));
     r.get('/api/products/<id>/moves', _authed(_productMoves, only: _cashStaff));
 
     r.post('/api/customers', _authed(_createCustomer, only: _cashStaff));
@@ -49,7 +49,7 @@ extension _PosRoutes on FixTrackServer {
     r.get('/api/cash/current', _authed(_cashCurrent, only: _cashStaff));
     r.post('/api/cash/moves', _authed(_addCashMove, only: _cashStaff));
     r.post('/api/cash/close', _authed(_closeCash, only: _cashStaff));
-    r.get('/api/cash/sessions', _authed(_cashSessions, only: {'owner'}));
+    r.get('/api/cash/sessions', _authed(_cashSessions, only: {'owner', 'supervisor'}));
   }
 
   // ================================================================ products
@@ -238,8 +238,8 @@ extension _PosRoutes on FixTrackServer {
     if (change == 0) return {'product': _productJson(p)};
     if (p['serialized'] == 1) throw ApiError(400, 'الأجهزة بالـ IMEI بتتضاف وبتتشال جهاز جهاز، مش بالجرد');
     final reason = const {'purchase', 'count', 'damaged', 'lost', 'return_supplier', 'other'}.contains(body['reason']) ? body['reason'] as String : 'other';
-    // الاستقبال يقدر يضيف بضاعة وصلت بس، والجرد والتالف لصاحب المحل
-    if (!u.isOwner && (reason != 'purchase' || change <= 0)) throw ApiError(403, 'تعديل الجرد لصاحب المحل بس. تقدر تضيف كمية وصلت');
+    // الاستقبال يقدر يضيف بضاعة وصلت بس، والجرد والتالف لصاحب المحل أو مسؤول الشفت
+    if (!u.isManager && (reason != 'purchase' || change <= 0)) throw ApiError(403, 'تعديل الجرد لصاحب المحل أو مسؤول الشفت بس. تقدر تضيف كمية وصلت');
     final paid = u.isOwner && body['costCents'] is int && (body['costCents'] as int) > 0 && change > 0 ? body['costCents'] as int : null;
     db.transaction(() {
       if (paid != null) {
@@ -412,7 +412,7 @@ extension _PosRoutes on FixTrackServer {
     if (customerId != null && db.selectOne('SELECT id FROM customers WHERE id = ?', [customerId]) == null) {
       throw ApiError(400, 'العميل ده مش موجود');
     }
-    final canDiscount = u.isOwner || db.setting('cashier_can_discount') != '0';
+    final canDiscount = u.isManager || db.setting('cashier_can_discount') != '0';
 
     final lines = <Map<String, Object?>>[];
     var subtotal = 0;

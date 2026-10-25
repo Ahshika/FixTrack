@@ -71,7 +71,7 @@ extension _ReportRoutes on FixTrackServer {
 
     // ---------------- الفنيين
     final technicians = <Map<String, Object?>>[];
-    for (final tech in db.select("SELECT * FROM users WHERE role IN ('technician', 'owner')")) {
+    for (final tech in db.select("SELECT * FROM users WHERE role IN ('technician', 'owner', 'supervisor')")) {
       final rows = db.select(
         "SELECT t.id, COALESCE(t.final_cents, t.estimated_cents) AS revenue, t.warranty_of, "
         "(julianday(t.delivered_at) - julianday(t.created_at)) * 24 AS hours, "

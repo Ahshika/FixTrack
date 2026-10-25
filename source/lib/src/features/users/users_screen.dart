@@ -68,6 +68,7 @@ class _UserTile extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final roleColor = switch (user.role) {
       Role.owner => brandOrange,
+      Role.supervisor => const Color(0xFF0891B2),
       Role.reception => brandBlue,
       Role.technician => const Color(0xFF7C3AED),
     };
@@ -233,6 +234,7 @@ class _UserDialogState extends ConsumerState<UserDialog> {
                 Text(
                   switch (_role) {
                     Role.owner => 'كل الصلاحيات: التقارير والفلوس والإعدادات والموظفين.',
+                    Role.supervisor => 'كل شغل الاستقبال، وكمان: الخصم، والجرد، وتعديل جهاز اتسلم، والتسليم من غير كود، والأيام اللي فاتت في الخزنة. ما بيشوفش التقارير ولا الأرباح.',
                     Role.reception => 'استلام وتسليم الأجهزة، وطباعة الوصولات، وتحصيل الفلوس.',
                     Role.technician => 'يشوف الأجهزة اللي عليه بس، ويحدّث حالة الإصلاح.',
                   },

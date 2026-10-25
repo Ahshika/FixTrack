@@ -261,6 +261,7 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     final isOwner = ref.read(sessionProvider).value!.user!.isOwner;
+    final canCount = ref.read(sessionProvider).value!.user!.isManager;
     setState(() {
       _busy = true;
       _error = null;
@@ -283,7 +284,7 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
       } else {
         await api.patch('/api/products/${p!.id}', body);
         final newQty = int.tryParse(latinDigits(_qty.text));
-        if (isOwner && newQty != null && newQty != p!.qty) {
+        if (canCount && newQty != null && newQty != p!.qty) {
           await api.post('/api/products/${p!.id}/adjust', {'setQty': newQty, 'reason': 'count', 'note': 'تعديل من شاشة الصنف'});
         }
       }
@@ -308,7 +309,7 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
   Widget build(BuildContext context) {
     final user = ref.watch(sessionProvider).value!.user!;
     final categories = ref.watch(categoriesProvider).value ?? const <String>[];
-    final canEditQty = _isNew || user.isOwner;
+    final canEditQty = _isNew || user.isManager;
     return AlertDialog(
       title: Text(_isNew ? 'صنف جديد' : p!.name),
       content: SizedBox(
@@ -433,7 +434,7 @@ class _ProductDialogState extends ConsumerState<ProductDialog> {
                     ),
                   ),
                 ],
-                if (!_isNew && user.isOwner) ...[
+                if (!_isNew && user.isManager) ...[
                   const SizedBox(height: 8),
                   Align(
                     alignment: AlignmentDirectional.centerStart,

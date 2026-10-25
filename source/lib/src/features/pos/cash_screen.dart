@@ -22,7 +22,7 @@ class CashScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('الخزنة'),
         actions: [
-          if (isOwner)
+          if (ref.watch(sessionProvider).value!.user!.isManager)
             TextButton.icon(
               onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const _SessionsScreen())),
               icon: const Icon(Icons.history_rounded),
