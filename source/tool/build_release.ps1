@@ -6,6 +6,10 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+# مفتاح Firebase بييجي من config/firebase.json (متجاهل في git). انسخ firebase.example.json لو مش موجود.
+$fbConfig = Join-Path $root 'configirebase.json'
+if (-not (Test-Path $fbConfig)) { throw 'configirebase.json مش موجود: انسخ configirebase.example.json وحط مفتاح Firebase فيه' }
+$fbDefine = "--dart-define-from-file=$fbConfig"
 
 $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
 $builds = Join-Path (Split-Path -Parent $root) 'builds'
@@ -13,7 +17,7 @@ $env:Path = "C:\src\flutter\bin;$env:Path"
 if (-not $env:JAVA_HOME) { $env:JAVA_HOME = (Get-ChildItem 'C:\Program Files\Microsoft' -Directory -Filter 'jdk-17*' | Select-Object -First 1).FullName }
 
 Write-Host "== FixTrack $version =="
-flutter build windows --release
+flutter build windows --release $fbDefine
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
 
 # ملفات Visual C++ اللي بعض الأجهزة مش عليها: بنحطها جنب البرنامج
@@ -27,9 +31,9 @@ if (-not $iscc) { throw 'Inno Setup مش متسطب' }
 & $iscc "/DAppVersion=$version" "/DOutputDir=$builds" (Join-Path $root 'installer\fixtrack.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
 
-flutter build apk --release
+flutter build apk --release $fbDefine
 if ($LASTEXITCODE -ne 0) { throw 'APK build failed' }
-flutter build apk --release --split-per-abi
+flutter build apk --release --split-per-abi $fbDefine
 if ($LASTEXITCODE -ne 0) { throw 'APK split build failed' }
 
 $apkDir = Join-Path $builds "FixTrack-$version-android"
