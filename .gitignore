@@ -25,3 +25,7 @@ owner-tools/
 *.iml
 **/.flutter-plugins-dependencies
 **/windows/flutter/ephemeral/
+
+# Firebase key for builds (copy config/firebase.example.json); never commit
+**/config/firebase.json
+**/firebase/public_dist/
